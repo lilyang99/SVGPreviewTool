@@ -1,0 +1,7 @@
+#ifndef SVGRENDERTEST_FRAMEWORK_H_
+#define SVGRENDERTEST_FRAMEWORK_H_
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+#endif // SVGRENDERTEST_FRAMEWORK_H_
