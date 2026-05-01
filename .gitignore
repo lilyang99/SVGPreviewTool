@@ -1,0 +1,57 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.db
+*.opendb
+*.tlog
+*.lastbuildstate
+*.idb
+*.pdb
+*.ilk
+*.exp
+*.aps
+*.ncb
+*.opt
+*.plg
+*.cache
+*.vspscc
+*.vssscc
+*.scc
+*.userosscache
+*.userprefs
+
+# Build outputs
+Debug/
+Release/
+x64/
+Win32/
+*/Debug/
+*/Release/
+*/x64/
+*/Win32/
+*.exe
+*.dll
+*.lib
+*.obj
+*.log
+*.tlb
+*.iobj
+*.ipdb
+*.pch
+
+# IntelliJ / VS Code
+.idea/
+*.swp
+*.swo
+*~
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# NuGet
+packages/
+*.nupkg

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   id="_作業データ"
+   data-name="作業データ"
+   viewBox="0 0 24 24"
+   version="1.1"
+   sodipodi:docname="closedefault_SVG.svg"
+   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="33.541667"
+     inkscape:cx="12.029814"
+     inkscape:cy="12.059627"
+     inkscape:window-width="1920"
+     inkscape:window-height="1009"
+     inkscape:window-x="3832"
+     inkscape:window-y="1064"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="_作業データ" />
+  <rect
+     class="cls-1"
+     width="24"
+     height="24"
+     transform="translate(24) rotate(90)"
+     id="rect1"
+     fill="none" />
+  <path
+     class="cls-2"
+     d="m 12.77,12 6.06,6.09 C 18.94,18.18 19,18.3 19,18.46 c 0,0.16 -0.05,0.29 -0.15,0.39 C 18.75,18.95 18.62,19 18.46,19 18.3,19 18.18,18.94 18.09,18.83 L 12,12.77 5.91,18.83 C 5.82,18.94 5.7,19 5.54,19 5.38,19 5.25,18.95 5.15,18.85 5.05,18.75 5,18.62 5,18.46 5,18.3 5.06,18.18 5.17,18.09 L 11.23,12 5.17,5.91 C 5.06,5.82 5,5.7 5,5.54 5,5.38 5.05,5.25 5.15,5.15 5.25,5.05 5.38,5 5.54,5 5.7,5 5.82,5.06 5.91,5.17 L 12,11.23 18.09,5.17 C 18.18,5.06 18.3,5 18.46,5 18.62,5 18.75,5.05 18.85,5.15 18.95,5.25 19,5.38 19,5.54 19,5.7 18.94,5.82 18.83,5.91 Z"
+     fill="none"
+     stroke="#444444"
+     stroke-width="1.75"
+     stroke-linejoin="round"
+     stroke-linecap="round"
+     id="path1"
+     style="stroke-width:0.2;stroke-dasharray:none;fill:#444444;fill-opacity:1" />
+</svg>
