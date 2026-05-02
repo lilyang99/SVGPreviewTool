@@ -26,9 +26,11 @@ HBITMAP CSVGImageConverter::ConvertToBitmap(UINT dpi)
         return nullptr;
 
     HBITMAP hBitmap = nullptr;
-    hr = CopyWICBitmapToHBITMAP(wicBitmap, width, height, &hBitmap);
-    
+    hr = CopyWICBitmapToHBITMAP(wicBitmap, &hBitmap);
+
     wicBitmap->Release();
+    if (FAILED(hr))
+        return nullptr;
     return hBitmap;
 }
 
@@ -44,7 +46,6 @@ Gdiplus::Bitmap* CSVGImageConverter::ConvertToGdiPlusBitmap(UINT dpi)
     if (FAILED(hr))
         return nullptr;
 
-    // Get WIC bitmap data
     hr = wicBitmap->GetSize(&width, &height);
     if (FAILED(hr))
     {
@@ -68,38 +69,44 @@ Gdiplus::Bitmap* CSVGImageConverter::ConvertToGdiPlusBitmap(UINT dpi)
             hr = lock->GetDataPointer(&dataCount, &data);
             if (SUCCEEDED(hr) && data)
             {
-                // Create GDI+ Bitmap (note: data will be copied, no need to manage lifecycle)
                 pGdiBitmap = new Gdiplus::Bitmap(
                     static_cast<INT>(width),
-                    static_cast<INT>(height));
-                
-                if (pGdiBitmap)
+                    static_cast<INT>(height),
+                    PixelFormat32bppPARGB);  // Match WIC PBGRA premultiplied alpha
+
+                if (pGdiBitmap && pGdiBitmap->GetLastStatus() == Gdiplus::Ok)
                 {
                     Gdiplus::BitmapData bitmapData;
                     Gdiplus::Rect rectGdi(0, 0, static_cast<INT>(width), static_cast<INT>(height));
-                    HRESULT lockHr = pGdiBitmap->LockBits(&rectGdi, Gdiplus::ImageLockModeWrite, PixelFormat32bppARGB, &bitmapData);
-                    if (SUCCEEDED(lockHr))
+                    Gdiplus::Status lockStatus = pGdiBitmap->LockBits(
+                        &rectGdi,
+                        Gdiplus::ImageLockModeWrite,
+                        PixelFormat32bppPARGB,
+                        &bitmapData);
+
+                    if (lockStatus == Gdiplus::Ok)
                     {
-                        // Copy row by row to handle stride differences
                         const BYTE* srcPtr = static_cast<const BYTE*>(data);
                         BYTE* dstPtr = static_cast<BYTE*>(bitmapData.Scan0);
+                        const UINT copyBytes = (std::min)(wicStride, static_cast<UINT>(bitmapData.Stride));
                         for (UINT y = 0; y < height; y++)
                         {
-                            CopyMemory(dstPtr + y * bitmapData.Stride, srcPtr + y * wicStride, wicStride);
+                            CopyMemory(dstPtr + y * bitmapData.Stride,
+                                       srcPtr + y * wicStride,
+                                       copyBytes);
                         }
                         pGdiBitmap->UnlockBits(&bitmapData);
-                        
-                        if (pGdiBitmap->GetLastStatus() != Gdiplus::Ok)
-                        {
-                            delete pGdiBitmap;
-                            pGdiBitmap = nullptr;
-                        }
                     }
                     else
                     {
                         delete pGdiBitmap;
                         pGdiBitmap = nullptr;
                     }
+                }
+                else if (pGdiBitmap)
+                {
+                    delete pGdiBitmap;
+                    pGdiBitmap = nullptr;
                 }
             }
         }
@@ -121,7 +128,6 @@ HICON CSVGImageConverter::ConvertToIcon(UINT dpi)
     if (FAILED(hr))
         return nullptr;
 
-    // Get WIC bitmap data
     hr = wicBitmap->GetSize(&width, &height);
     if (FAILED(hr))
     {
@@ -146,32 +152,43 @@ HICON CSVGImageConverter::ConvertToIcon(UINT dpi)
 
             if (SUCCEEDED(hr) && data)
             {
-                // Create temporary GDI+ Bitmap
                 Gdiplus::Bitmap* pGdiBitmap = new Gdiplus::Bitmap(
                     static_cast<INT>(width),
-                    static_cast<INT>(height));
+                    static_cast<INT>(height),
+                    PixelFormat32bppPARGB);
 
-                if (pGdiBitmap)
+                if (pGdiBitmap && pGdiBitmap->GetLastStatus() == Gdiplus::Ok)
                 {
                     Gdiplus::BitmapData bitmapData;
                     Gdiplus::Rect rectGdi(0, 0, static_cast<INT>(width), static_cast<INT>(height));
-                    HRESULT lockHr = pGdiBitmap->LockBits(&rectGdi, Gdiplus::ImageLockModeWrite, PixelFormat32bppARGB, &bitmapData);
-                    if (SUCCEEDED(lockHr))
+                    Gdiplus::Status lockStatus = pGdiBitmap->LockBits(
+                        &rectGdi,
+                        Gdiplus::ImageLockModeWrite,
+                        PixelFormat32bppPARGB,
+                        &bitmapData);
+
+                    if (lockStatus == Gdiplus::Ok)
                     {
-                        // Copy row by row to handle stride differences
                         const BYTE* srcPtr = static_cast<const BYTE*>(data);
                         BYTE* dstPtr = static_cast<BYTE*>(bitmapData.Scan0);
+                        const UINT copyBytes = (std::min)(wicStride, static_cast<UINT>(bitmapData.Stride));
                         for (UINT y = 0; y < height; y++)
                         {
-                            CopyMemory(dstPtr + y * bitmapData.Stride, srcPtr + y * wicStride, wicStride);
+                            CopyMemory(dstPtr + y * bitmapData.Stride,
+                                       srcPtr + y * wicStride,
+                                       copyBytes);
                         }
                         pGdiBitmap->UnlockBits(&bitmapData);
-                        
+
                         if (pGdiBitmap->GetLastStatus() == Gdiplus::Ok)
                         {
                             pGdiBitmap->GetHICON(&hIcon);
                         }
                     }
+                    delete pGdiBitmap;
+                }
+                else if (pGdiBitmap)
+                {
                     delete pGdiBitmap;
                 }
             }
@@ -191,8 +208,11 @@ HRESULT CSVGImageConverter::RenderToWICBitmap(
     if (!outputBitmap || !width || !height)
         return E_POINTER;
 
-    // Check if renderer is valid
+    // Check if renderer and attribute reader are valid
     if (!m_renderer || !m_renderer->IsValid())
+        return E_FAIL;
+
+    if (!m_attributeReader || !m_attributeReader->IsValid())
         return E_FAIL;
 
     // Get original size
@@ -243,13 +263,12 @@ HRESULT CSVGImageConverter::RenderToWICBitmap(
 
 HRESULT CSVGImageConverter::CopyWICBitmapToHBITMAP(
     IWICBitmap* wicBitmap,
-    UINT width,
-    UINT height,
     HBITMAP* outputBitmap)
 {
     if (!wicBitmap || !outputBitmap)
         return E_POINTER;
 
+    UINT width = 0, height = 0;
     HRESULT hr = wicBitmap->GetSize(&width, &height);
     if (FAILED(hr))
         return hr;
@@ -292,15 +311,21 @@ HRESULT CSVGImageConverter::CopyWICBitmapToHBITMAP(
 
     void* bits = nullptr;
     HBITMAP hBitmap = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
-    
+    if (!hBitmap)
+    {
+        ReleaseDC(nullptr, hdc);
+        return E_FAIL;
+    }
+
     if (bits && data)
     {
         // Copy data row by row (handling different stride between WIC and DIB)
         const BYTE* srcPtr = static_cast<const BYTE*>(data);
         BYTE* dstPtr = static_cast<BYTE*>(bits);
+        const UINT copyBytes = (std::min)(wicStride, dibStride);
         for (UINT y = 0; y < height; y++)
         {
-            CopyMemory(dstPtr + y * dibStride, srcPtr + y * wicStride, wicStride);
+            CopyMemory(dstPtr + y * dibStride, srcPtr + y * wicStride, copyBytes);
         }
     }
 

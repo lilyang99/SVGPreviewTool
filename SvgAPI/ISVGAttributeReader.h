@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SVGAPI_ISVGATTRIBUTEREADER_H_
+#define SVGAPI_ISVGATTRIBUTEREADER_H_
 
 #include <d2d1svg.h>
 #include <winerror.h>
@@ -36,3 +37,5 @@ public:
      */
     virtual bool IsValid() const = 0;
 };
+
+#endif // SVGAPI_ISVGATTRIBUTEREADER_H_

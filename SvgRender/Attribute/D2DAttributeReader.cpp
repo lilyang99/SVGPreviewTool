@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "D2DAttributeReader.h"
 
-HRESULT CD2DAttributeReader::Initialize(Microsoft::WRL::ComPtr<ID2D1SvgDocument> svgDocument)
+HRESULT CD2DAttributeReader::Initialize(const Microsoft::WRL::ComPtr<ID2D1SvgDocument>& svgDocument)
 {
     m_svgDocument = svgDocument;
     m_valid = (svgDocument != nullptr);

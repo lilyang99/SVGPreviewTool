@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SVGAPI_ISVGRENDERER_H_
+#define SVGAPI_ISVGRENDERER_H_
 
 #include <d2d1_3.h>
 #include <d2d1svg.h>
@@ -91,3 +92,5 @@ protected:
      */
     virtual HRESULT GetWICBitmap(IWICBitmap** bitmap) = 0;
 };
+
+#endif // SVGAPI_ISVGRENDERER_H_

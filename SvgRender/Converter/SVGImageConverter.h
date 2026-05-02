@@ -73,15 +73,11 @@ private:
      * @brief Copy a WIC bitmap to an HBITMAP
      *
      * @param wicBitmap The source WIC bitmap
-     * @param width The bitmap width
-     * @param height The bitmap height
      * @param[out] outputBitmap The resulting HBITMAP
      * @return HRESULT indicating success or failure
      */
     HRESULT CopyWICBitmapToHBITMAP(
         IWICBitmap* wicBitmap,
-        UINT width,
-        UINT height,
         HBITMAP* outputBitmap);
 
     ISVGRenderer* m_renderer;
@@ -90,3 +86,4 @@ private:
 };
 
 #endif // SVGRENDER_CONVERTER_SVGIMAGECONVERTER_H_
+

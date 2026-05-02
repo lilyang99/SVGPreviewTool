@@ -23,7 +23,7 @@ public:
      * @param svgDocument The SVG document to read attributes from
      * @return HRESULT indicating success or failure
      */
-    HRESULT Initialize(Microsoft::WRL::ComPtr<ID2D1SvgDocument> svgDocument);
+    HRESULT Initialize(const Microsoft::WRL::ComPtr<ID2D1SvgDocument>& svgDocument);
 
     // ISVGAttributeReader implementation
     virtual HRESULT GetViewBox(D2D1_SVG_VIEWBOX* viewBox) const override;
@@ -36,3 +36,4 @@ private:
 };
 
 #endif // SVGRENDER_ATTRIBUTE_D2DATTRIBUTEREADER_H_
+

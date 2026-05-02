@@ -85,115 +85,63 @@ void CSVGImage::Cleanup()
     }
 }
 
-HRESULT CSVGImage::LoadFromStream(IStream* stream)
+// ---------------------------------------------------------------------------
+// LoadInternal — common load pipeline shared by LoadFromStream/File/Resource
+// ---------------------------------------------------------------------------
+template <typename LoadFunc>
+HRESULT CSVGImage::LoadInternal(HRESULT errorOnInvalid, LoadFunc&& loadFunc)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    if (!m_renderer || !stream)
-    {
-        return E_INVALIDARG;
-    }
+    if (!m_renderer)
+        return errorOnInvalid;
 
-    // Release attribute reader's reference to old SVG before renderer destroys old context
+    // Save old state for rollback on failure
+    auto oldReader = std::move(m_attributeReader);
+    auto oldConverter = std::move(m_converter);
     m_converter.reset();
     m_attributeReader = std::make_unique<CD2DAttributeReader>();
 
-    HRESULT hr = m_renderer->LoadFromStream(stream);
+    HRESULT hr = loadFunc();
     if (FAILED(hr))
     {
+        m_attributeReader = std::move(oldReader);
+        m_converter = std::move(oldConverter);
         return hr;
     }
 
-    // Update attribute reader
     ID2D1SvgDocument* doc = m_renderer->GetSvgDocument();
     if (doc)
     {
         hr = m_attributeReader->Initialize(doc);
         if (FAILED(hr))
         {
+            m_attributeReader = std::move(oldReader);
+            m_converter = std::move(oldConverter);
             return hr;
         }
-
         m_originalSize = m_attributeReader->GetOriginalSize();
     }
 
     m_converter = std::make_unique<CSVGImageConverter>(m_renderer.get(), m_attributeReader.get());
-
     return S_OK;
+}
+
+HRESULT CSVGImage::LoadFromStream(IStream* stream)
+{
+    if (!stream)
+        return E_INVALIDARG;
+    return LoadInternal(E_INVALIDARG, [&]() { return m_renderer->LoadFromStream(stream); });
 }
 
 HRESULT CSVGImage::LoadFromFile(LPCWSTR filePath)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
-    if (!m_renderer)
-    {
-        return E_UNEXPECTED;
-    }
-
-    // Release attribute reader's reference to old SVG before renderer destroys old context
-    m_converter.reset();
-    m_attributeReader = std::make_unique<CD2DAttributeReader>();
-
-    HRESULT hr = m_renderer->LoadFromFile(filePath);
-    if (FAILED(hr))
-    {
-        return hr;
-    }
-
-    // Update attribute reader
-    ID2D1SvgDocument* doc = m_renderer->GetSvgDocument();
-    if (doc)
-    {
-        hr = m_attributeReader->Initialize(doc);
-        if (FAILED(hr))
-        {
-            return hr;
-        }
-
-        m_originalSize = m_attributeReader->GetOriginalSize();
-    }
-
-    m_converter = std::make_unique<CSVGImageConverter>(m_renderer.get(), m_attributeReader.get());
-
-    return S_OK;
+    return LoadInternal(E_UNEXPECTED, [&]() { return m_renderer->LoadFromFile(filePath); });
 }
 
 HRESULT CSVGImage::LoadFromResource(UINT resourceID, LPCWSTR type)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
-    if (!m_renderer)
-    {
-        return E_UNEXPECTED;
-    }
-
-    // Release attribute reader's reference to old SVG before renderer destroys old context
-    m_converter.reset();
-    m_attributeReader = std::make_unique<CD2DAttributeReader>();
-
-    HRESULT hr = m_renderer->LoadFromResource(resourceID, type);
-    if (FAILED(hr))
-    {
-        return hr;
-    }
-
-    // Update attribute reader
-    ID2D1SvgDocument* doc = m_renderer->GetSvgDocument();
-    if (doc)
-    {
-        hr = m_attributeReader->Initialize(doc);
-        if (FAILED(hr))
-        {
-            return hr;
-        }
-
-        m_originalSize = m_attributeReader->GetOriginalSize();
-    }
-
-    m_converter = std::make_unique<CSVGImageConverter>(m_renderer.get(), m_attributeReader.get());
-
-    return S_OK;
+    return LoadInternal(E_UNEXPECTED, [&]() { return m_renderer->LoadFromResource(resourceID, type); });
 }
 
 SIZE CSVGImage::GetOriginalSize() const
@@ -271,5 +219,6 @@ bool CSVGImage::IsValid() const
 
 ISVGAttributeReader* CSVGImage::GetAttributeReader()
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     return m_attributeReader.get();
 }

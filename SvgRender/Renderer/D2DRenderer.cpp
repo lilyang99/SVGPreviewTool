@@ -80,6 +80,13 @@ HRESULT CD2DRenderer::LoadFromFile(LPCWSTR filePath)
         return E_FAIL;
     }
 
+    // Reject files larger than 4 GB (SVG files are typically KB–MB)
+    if (fileSize.HighPart > 0)
+    {
+        ::CloseHandle(hFile);
+        return E_INVALIDARG;
+    }
+
     HGLOBAL hGlobal = ::GlobalAlloc(GMEM_MOVEABLE, fileSize.LowPart);
     if (!hGlobal)
     {
@@ -87,7 +94,14 @@ HRESULT CD2DRenderer::LoadFromFile(LPCWSTR filePath)
         return E_OUTOFMEMORY;
     }
 
-    BYTE* pGlobal = (BYTE*)::GlobalLock(hGlobal);
+    BYTE* pGlobal = static_cast<BYTE*>(::GlobalLock(hGlobal));
+    if (!pGlobal)
+    {
+        ::CloseHandle(hFile);
+        ::GlobalFree(hGlobal);
+        return E_OUTOFMEMORY;
+    }
+
     DWORD bytesRead;
     BOOL success = ::ReadFile(hFile, pGlobal, fileSize.LowPart, &bytesRead, nullptr) &&
         bytesRead == fileSize.LowPart;
@@ -139,26 +153,27 @@ HRESULT CD2DRenderer::LoadFromResource(UINT resourceID, LPCWSTR type)
         return E_OUTOFMEMORY;
 
     LPVOID pBuffer = ::GlobalLock(hBuffer);
-    if (pBuffer)
+    if (!pBuffer)
     {
-        CopyMemory(pBuffer, pResourceData, imageSize);
-        ::GlobalUnlock(hBuffer);
-
-        IStream* pStream = nullptr;
-        HRESULT hr = CreateStreamOnHGlobal(hBuffer, TRUE, &pStream);
-        if (SUCCEEDED(hr) && pStream)
-        {
-            hr = LoadFromStreamInternal(pStream);
-            pStream->Release();
-        }
-
         ::GlobalFree(hBuffer);
-        return hr;
+        return E_FAIL;
     }
 
+    CopyMemory(pBuffer, pResourceData, imageSize);
     ::GlobalUnlock(hBuffer);
-    ::GlobalFree(hBuffer);
-    return E_FAIL;
+
+    IStream* pStream = nullptr;
+    // fDeleteOnRelease = TRUE: pStream->Release() will call GlobalFree(hBuffer)
+    HRESULT hr = CreateStreamOnHGlobal(hBuffer, TRUE, &pStream);
+    if (FAILED(hr) || !pStream)
+    {
+        ::GlobalFree(hBuffer);
+        return FAILED(hr) ? hr : E_FAIL;
+    }
+
+    hr = LoadFromStreamInternal(pStream);
+    pStream->Release();  // Also frees hBuffer (fDeleteOnRelease = TRUE)
+    return hr;
 }
 
 HRESULT CD2DRenderer::RenderToWICBitmap(
@@ -185,12 +200,9 @@ HRESULT CD2DRenderer::RenderToWICBitmap(
     if (FAILED(hr))
         return hr;
 
-    ID2D1DeviceContext5* context = nullptr;
-    hr = m_renderTarget->QueryInterface(__uuidof(ID2D1DeviceContext5), reinterpret_cast<void**>(&context));
-    if (SUCCEEDED(hr) && context)
-        m_context.Attach(context);
-    else
-        return hr;
+    hr = m_renderTarget.As(&m_context);
+    if (FAILED(hr) || !m_context)
+        return FAILED(hr) ? hr : E_FAIL;
 
     m_currentDpiX = dpiX;
     m_currentDpiY = dpiY;
@@ -222,6 +234,7 @@ bool CD2DRenderer::IsValid() const
 
 ID2D1SvgDocument* CD2DRenderer::GetSvgDocument() const
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     return m_svg.Get();
 }
 
@@ -240,43 +253,41 @@ HRESULT CD2DRenderer::LoadFromStreamInternal(IStream* stream)
     if (!stream)
         return E_POINTER;
 
-    // Clean up old resources
-    m_svg.Reset();
-    m_context.Reset();
-    m_renderTarget.Reset();
-    m_wicBitmap.Reset();
-    m_currentDpiX = 0;
-    m_currentDpiY = 0;
+    if (!m_wic || !m_factory)
+        return E_FAIL;
 
-    // First pass: use a temporary viewport to parse the SVG
+    // Build new state in local ComPtrs. Member variables are NOT modified
+    // until the entire load succeeds — provides strong exception safety.
     D2D1_SIZE_F tempViewportSize = D2D1::SizeF(100, 100);
-
-    // Create WIC bitmap with temporary size
-    HRESULT hr = m_wic->CreateBitmap(
-        static_cast<UINT>(tempViewportSize.width),
-        static_cast<UINT>(tempViewportSize.height),
-        GUID_WICPixelFormat32bppPBGRA,
-        WICBitmapCacheOnLoad,
-        &m_wicBitmap
-    );
-    if (FAILED(hr))
-        return hr;
 
     D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
         D2D1_RENDER_TARGET_TYPE_DEFAULT,
         D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
     );
 
-    hr = m_factory->CreateWicBitmapRenderTarget(m_wicBitmap.Get(), &props, &m_renderTarget);
+    Microsoft::WRL::ComPtr<IWICBitmap> newWicBitmap;
+    HRESULT hr = m_wic->CreateBitmap(
+        static_cast<UINT>(tempViewportSize.width),
+        static_cast<UINT>(tempViewportSize.height),
+        GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapCacheOnLoad,
+        &newWicBitmap
+    );
     if (FAILED(hr))
         return hr;
 
-    hr = m_renderTarget.As(&m_context);
-    if (FAILED(hr) || !m_context)
+    Microsoft::WRL::ComPtr<ID2D1RenderTarget> newRenderTarget;
+    hr = m_factory->CreateWicBitmapRenderTarget(newWicBitmap.Get(), &props, &newRenderTarget);
+    if (FAILED(hr))
         return hr;
 
-    // Create SVG document with temporary viewport (just for parsing)
-    hr = m_context->CreateSvgDocument(stream, tempViewportSize, &m_svg);
+    Microsoft::WRL::ComPtr<ID2D1DeviceContext5> newContext;
+    hr = newRenderTarget.As(&newContext);
+    if (FAILED(hr) || !newContext)
+        return FAILED(hr) ? hr : E_FAIL;
+
+    Microsoft::WRL::ComPtr<ID2D1SvgDocument> newSvg;
+    hr = newContext->CreateSvgDocument(stream, tempViewportSize, &newSvg);
     if (FAILED(hr))
         return hr;
 
@@ -284,7 +295,7 @@ HRESULT CD2DRenderer::LoadFromStreamInternal(IStream* stream)
     D2D1_SIZE_F actualViewportSize = tempViewportSize;
     {
         CD2DAttributeReader attributeReader;
-        hr = attributeReader.Initialize(m_svg);
+        hr = attributeReader.Initialize(newSvg);
         if (FAILED(hr))
             return hr;
 
@@ -295,50 +306,54 @@ HRESULT CD2DRenderer::LoadFromStreamInternal(IStream* stream)
                 static_cast<FLOAT>(actualSize.cx),
                 static_cast<FLOAT>(actualSize.cy));
         }
-    } // attributeReader destroyed here — releases SVG ref while context is alive
+    } // attributeReader destroyed — releases its SVG ref while context is alive
 
-    // If actual size differs, recreate everything with correct viewport
+    // If actual size differs from temp, recreate with correct viewport
     if (actualViewportSize.width != tempViewportSize.width ||
         actualViewportSize.height != tempViewportSize.height)
     {
-        // Rewind stream to beginning
         LARGE_INTEGER seekPos = {};
         hr = stream->Seek(seekPos, STREAM_SEEK_SET, nullptr);
         if (FAILED(hr))
             return hr;
 
-        // Reset all resources in correct order: SVG first, then context/render target/WIC
-        m_svg.Reset();
-        m_context.Reset();
-        m_renderTarget.Reset();
-        m_wicBitmap.Reset();
+        // Release temp objects before rebuilding
+        newSvg.Reset();
+        newContext.Reset();
+        newRenderTarget.Reset();
+        newWicBitmap.Reset();
 
-        // Recreate WIC bitmap with correct size
         hr = m_wic->CreateBitmap(
             static_cast<UINT>(actualViewportSize.width),
             static_cast<UINT>(actualViewportSize.height),
             GUID_WICPixelFormat32bppPBGRA,
             WICBitmapCacheOnLoad,
-            &m_wicBitmap
+            &newWicBitmap
         );
         if (FAILED(hr))
             return hr;
 
-        // Recreate RenderTarget from correct-size bitmap
-        hr = m_factory->CreateWicBitmapRenderTarget(m_wicBitmap.Get(), &props, &m_renderTarget);
+        hr = m_factory->CreateWicBitmapRenderTarget(newWicBitmap.Get(), &props, &newRenderTarget);
         if (FAILED(hr))
             return hr;
 
-        hr = m_renderTarget.As(&m_context);
-        if (FAILED(hr) || !m_context)
-            return hr;
+        hr = newRenderTarget.As(&newContext);
+        if (FAILED(hr) || !newContext)
+            return FAILED(hr) ? hr : E_FAIL;
 
-        // Recreate SVG document with correct viewport size
-        hr = m_context->CreateSvgDocument(stream, actualViewportSize, &m_svg);
+        hr = newContext->CreateSvgDocument(stream, actualViewportSize, &newSvg);
         if (FAILED(hr))
             return hr;
     }
 
+    // All steps succeeded — commit to members (old state released by ComPtr =)
+    m_svg = newSvg;
+    m_context = newContext;
+    m_renderTarget = newRenderTarget;
+    m_wicBitmap = newWicBitmap;
+    m_currentDpiX = 0;
+    m_currentDpiY = 0;
     m_loaded = true;
+
     return S_OK;
 }

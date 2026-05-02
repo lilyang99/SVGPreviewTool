@@ -43,13 +43,6 @@ public:
     ISVGAttributeReader* GetAttributeReader() override;
 
 private:
-    /**
-     * @brief Recalculate rendered size after DPI change
-     *
-     * @return HRESULT indicating success or failure
-     */
-    HRESULT RecalculateSize();
-
     /// @name Components
     /// @{
     std::unique_ptr<CD2DRenderer> m_renderer;
@@ -65,6 +58,11 @@ private:
 
     /// @brief Thread synchronization lock
     mutable std::mutex m_mutex;
+
+    /// @brief Common load implementation shared by LoadFromStream/File/Resource
+    template <typename LoadFunc>
+    HRESULT LoadInternal(HRESULT errorOnInvalid, LoadFunc&& loadFunc);
 };
 
 #endif // SVGRENDER_IMAGE_CSVGIMAGE_H_
+

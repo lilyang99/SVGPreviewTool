@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SVGAPI_ISVGIMAGE_H_
+#define SVGAPI_ISVGIMAGE_H_
 
 #include <windows.h>
 #include <d2d1.h>
@@ -118,3 +119,5 @@ public:
      */
     virtual ISVGAttributeReader* GetAttributeReader() = 0;
 };
+
+#endif // SVGAPI_ISVGIMAGE_H_

@@ -123,3 +123,4 @@ private:
 };
 
 #endif // SVGRENDER_RENDERER_D2DRENDERER_H_
+

@@ -315,5 +315,7 @@ void CChildFrame::OnUpdateIndicatorText(CCmdUI* pCmdUI)
 
 void CChildFrame::LoadFile(LPCTSTR lpszPath)
 {
-    AfxMessageBox(_T("Failed to load image."));
+    UNREFERENCED_PARAMETER(lpszPath);
+    // Base implementation: derived classes (CSvgChildFrame, CImageChildFrame)
+    // must override this method.
 }
