@@ -5,6 +5,11 @@
 #include <winerror.h>
 #include <sal.h>
 
+// SVG attribute name constants
+#define SVG_ATTRIBUTE_VIEWBOX  L"viewBox"
+#define SVG_ATTRIBUTE_WIDTH    L"width"
+#define SVG_ATTRIBUTE_HEIGHT   L"height"
+
 /**
  * @brief SVG attribute reader interface
  *
@@ -22,6 +27,15 @@ public:
      * @return HRESULT indicating success or failure
      */
     virtual HRESULT GetViewBox(D2D1_SVG_VIEWBOX* viewBox) const = 0;
+
+    /**
+     * @brief Get the root <svg> element width and height attributes
+     *
+     * @param[out] width Receives the width length
+     * @param[out] height Receives the height length
+     * @return HRESULT indicating success or failure
+     */
+    virtual HRESULT GetRootSize(D2D1_SVG_LENGTH* width, D2D1_SVG_LENGTH* height) const = 0;
 
     /**
      * @brief Get the original SVG size

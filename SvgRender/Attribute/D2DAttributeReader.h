@@ -27,6 +27,7 @@ public:
 
     // ISVGAttributeReader implementation
     virtual HRESULT GetViewBox(D2D1_SVG_VIEWBOX* viewBox) const override;
+    virtual HRESULT GetRootSize(D2D1_SVG_LENGTH* width, D2D1_SVG_LENGTH* height) const override;
     virtual SIZE GetOriginalSize() const override;
     virtual bool IsValid() const override;
 

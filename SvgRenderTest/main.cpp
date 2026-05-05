@@ -275,10 +275,10 @@ void Test_MoveSemantics()
     TestPass();
 }
 
-// 9. LoadMultiple — reload without intermediate Cleanup
-void Test_LoadMultiple()
+// 9. LoadIdempotent — repeated Load* calls return S_FALSE after first success
+void Test_LoadIdempotent()
 {
-    BeginTest(L"LoadMultiple");
+    BeginTest(L"LoadIdempotent");
     {
         CSVGImage img;
         if (!img.Initialize())
@@ -287,21 +287,35 @@ void Test_LoadMultiple()
             return;
         }
 
-        // Load same file 3 times — each LoadFromFile replaces the previous
-        for (int i = 0; i < 3; ++i)
+        HRESULT hr = img.LoadFromFile(g_svgPath.c_str());
+        if (FAILED(hr))
         {
-            HRESULT hr = img.LoadFromFile(g_svgPath.c_str());
-            if (FAILED(hr))
-            {
-                TestFail(L"Reload failed");
-                return;
-            }
+            TestFail(L"First LoadFromFile() failed");
+            return;
+        }
+        if (hr != S_OK)
+        {
+            TestFail(L"First load should return S_OK");
+            return;
+        }
+
+        // Second load with same file — idempotent, returns S_FALSE
+        hr = img.LoadFromFile(g_svgPath.c_str());
+        if (FAILED(hr))
+        {
+            TestFail(L"Second LoadFromFile() failed unexpectedly");
+            return;
+        }
+        if (hr != S_FALSE)
+        {
+            TestFail(L"Second load should return S_FALSE");
+            return;
         }
 
         HBITMAP hbm = img.ToHBITMAP();
         if (!hbm)
         {
-            TestFail(L"ToHBITMAP() after reloads returned null");
+            TestFail(L"ToHBITMAP() after idempotent loads returned null");
             return;
         }
         ::DeleteObject(hbm);
@@ -310,7 +324,123 @@ void Test_LoadMultiple()
     TestPass();
 }
 
-// 10. InvalidFile — load nonexistent file, should fail cleanly
+// 10. ResetAndReload — Reset() clears cache, so next Load re-parses
+void Test_ResetAndReload()
+{
+    BeginTest(L"ResetAndReload");
+    {
+        CSVGImage img;
+        if (!img.Initialize() ||
+            FAILED(img.LoadFromFile(g_svgPath.c_str())))
+        {
+            TestFail(L"First load failed");
+            return;
+        }
+
+        SIZE originalSize = img.GetOriginalSize();
+        if (originalSize.cx <= 0 || originalSize.cy <= 0)
+        {
+            TestFail(L"Invalid original size after load");
+            return;
+        }
+
+        img.Reset();
+
+        // After Reset, IsValid should be false (no loaded content)
+        if (img.IsValid())
+        {
+            TestFail(L"IsValid() should be false after Reset()");
+            return;
+        }
+
+        // Reload — should return S_OK (fresh load, not idempotent S_FALSE)
+        HRESULT hr = img.LoadFromFile(g_svgPath.c_str());
+        if (FAILED(hr))
+        {
+            TestFail(L"Reload after Reset() failed");
+            return;
+        }
+        if (hr != S_OK)
+        {
+            TestFail(L"Reload after Reset() should return S_OK, not S_FALSE");
+            return;
+        }
+
+        SIZE reloadedSize = img.GetOriginalSize();
+        if (reloadedSize.cx != originalSize.cx ||
+            reloadedSize.cy != originalSize.cy)
+        {
+            TestFail(L"Size mismatch after Reset+Reload");
+            return;
+        }
+
+        HBITMAP hbm = img.ToHBITMAP();
+        if (!hbm)
+        {
+            TestFail(L"ToHBITMAP() after Reset+Reload returned null");
+            return;
+        }
+        ::DeleteObject(hbm);
+        img.Cleanup();
+    }
+    TestPass();
+}
+
+// 11. DPIReRender — SetDPI + ToHBITMAP uses cached doc, no re-parse needed
+void Test_DPIReRender()
+{
+    BeginTest(L"DPIReRender");
+    {
+        CSVGImage img;
+        if (!img.Initialize(USER_DEFAULT_SCREEN_DPI) ||
+            FAILED(img.LoadFromFile(g_svgPath.c_str())))
+        {
+            TestFail(L"Setup failed");
+            return;
+        }
+
+        HBITMAP hbm96 = img.ToHBITMAP();
+        if (!hbm96)
+        {
+            TestFail(L"ToHBITMAP() at 96 DPI returned null");
+            return;
+        }
+        BITMAP bm96 = {};
+        ::GetObject(hbm96, sizeof(BITMAP), &bm96);
+        ::DeleteObject(hbm96);
+
+        // Change DPI — should NOT trigger re-load, just re-render
+        img.SetDPI(192);
+        HBITMAP hbm192 = img.ToHBITMAP();
+        if (!hbm192)
+        {
+            TestFail(L"ToHBITMAP() at 192 DPI returned null");
+            return;
+        }
+        BITMAP bm192 = {};
+        ::GetObject(hbm192, sizeof(BITMAP), &bm192);
+        ::DeleteObject(hbm192);
+
+        if (bm192.bmWidth != bm96.bmWidth * 2 ||
+            bm192.bmHeight != bm96.bmHeight * 2)
+        {
+            TestFail(L"DPI scale dimensions incorrect");
+            return;
+        }
+
+        // Verify IsValid still holds (no Reset was called)
+        if (!img.IsValid())
+        {
+            TestFail(L"IsValid() should be true after DPI change");
+            return;
+        }
+
+        img.Cleanup();
+    }
+    TestPass();
+}
+
+// 12. InvalidFile — load nonexistent file, should fail cleanly
 void Test_InvalidFile()
 {
     BeginTest(L"InvalidFile");
@@ -333,7 +463,7 @@ void Test_InvalidFile()
     TestPass();
 }
 
-// 11. NoInitLoad — LoadFromFile without Initialize
+// 13. NoInitLoad — LoadFromFile without Initialize
 void Test_NoInitLoad()
 {
     BeginTest(L"NoInitLoad");
@@ -350,25 +480,30 @@ void Test_NoInitLoad()
     TestPass();
 }
 
-// 12. StressTest — 100x create/load/convert/destroy, print per-iteration memory
+// 14. StressTest — 100x create/load/convert/destroy, print per-iteration memory
+// 14. StressTest — load once, then repeatedly render at cycling DPIs.
+//      Isolates the rendering path from the load/probe path.
 void Test_StressTest()
 {
-    BeginTest(L"StressTest (x100)");
+    BeginTest(L"StressTest (x100, load once)");
     std::wcout << std::endl;
 
     PROCESS_MEMORY_COUNTERS pmc0 = {};
     pmc0.cb = sizeof(pmc0);
     GetProcessMemoryInfo(GetCurrentProcess(), &pmc0, sizeof(pmc0));
 
+    CSVGImage img;
+    if (!img.Initialize(USER_DEFAULT_SCREEN_DPI) ||
+        FAILED(img.LoadFromFile(g_svgPath.c_str())))
+    {
+        TestFail(L"Setup failed");
+        return;
+    }
+
+    const UINT dpis[] = {96, 120, 144, 192, 240};
     for (int i = 0; i < 100; ++i)
     {
-        CSVGImage img;
-        if (!img.Initialize() ||
-            FAILED(img.LoadFromFile(g_svgPath.c_str())))
-        {
-            TestFail(L"Setup failed on iteration");
-            return;
-        }
+        img.SetDPI(dpis[i % 5]);
 
         HBITMAP hbm = img.ToHBITMAP();
         if (hbm) ::DeleteObject(hbm);
@@ -379,25 +514,21 @@ void Test_StressTest()
         HICON hIcon = img.ToHICON();
         if (hIcon) ::DestroyIcon(hIcon);
 
-        img.Cleanup();
-
-        // Print per-iteration memory
-        if (true)
-        {
-            PROCESS_MEMORY_COUNTERS pmc = {};
-            pmc.cb = sizeof(pmc);
-            GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc));
-            LONG delta = static_cast<LONG>(pmc.PagefileUsage - pmc0.PagefileUsage) / 1024;
-            std::wcout << L"    [" << (i + 1) << L"] "
-                       << L"Private=" << (pmc.PagefileUsage / 1024) << L" KB"
-                       << L"  (delta " << (delta >= 0 ? L"+" : L"") << delta << L" KB)"
-                       << std::endl;
-        }
+        PROCESS_MEMORY_COUNTERS pmc = {};
+        pmc.cb = sizeof(pmc);
+        GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc));
+        LONG delta = static_cast<LONG>(pmc.PagefileUsage - pmc0.PagefileUsage) / 1024;
+        std::wcout << L"    [" << (i + 1) << L"] "
+                   << L"Private=" << (pmc.PagefileUsage / 1024) << L" KB"
+                   << L"  (delta " << (delta >= 0 ? L"+" : L"") << delta << L" KB)"
+                   << std::endl;
     }
+
+    img.Cleanup();
     TestPass();
 }
 
-// 13. HeapSnapshot — use _CrtMemState to catch both CRT and COM refcount leaks
+// 15. HeapSnapshot — use _CrtMemState to catch both CRT and COM refcount leaks
 //      CRT leak detection at exit can miss system COM objects; heap snapshots
 //      compare the process heap before/after a full lifecycle to detect any
 //      memory that was allocated but never freed (regardless of allocator).
@@ -511,7 +642,9 @@ int main()
     Test_RepeatedLoad();
     Test_DPIScale();
     Test_MoveSemantics();
-    Test_LoadMultiple();
+    Test_LoadIdempotent();
+    Test_ResetAndReload();
+    Test_DPIReRender();
     Test_InvalidFile();
     Test_NoInitLoad();
 

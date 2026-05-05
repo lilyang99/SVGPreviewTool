@@ -23,10 +23,10 @@
 IMPLEMENT_DYNAMIC(CSvgChildFrame, CChildFrame)
 
 BEGIN_MESSAGE_MAP(CSvgChildFrame, CChildFrame)
-    ON_WM_CREATE()
-    ON_COMMAND(ID_DPI_SCALE, &CSvgChildFrame::OnDpiScale)
-    ON_WM_PAINT()
-    ON_UPDATE_COMMAND_UI(AFX_IDS_IDLEMESSAGE, &CSvgChildFrame::OnUpdateIndicatorText)
+ON_WM_CREATE()
+ON_COMMAND(ID_DPI_SCALE, &CSvgChildFrame::OnDpiScale)
+ON_WM_PAINT()
+ON_UPDATE_COMMAND_UI(AFX_IDS_IDLEMESSAGE, &CSvgChildFrame::OnUpdateIndicatorText)
 END_MESSAGE_MAP()
 
 // CSvgChildFrame construction/destruction
@@ -53,7 +53,7 @@ void CSvgChildFrame::AssertValid() const
     CChildFrame::AssertValid();
 }
 
-void CSvgChildFrame::Dump(CDumpContext& dc) const
+void CSvgChildFrame::Dump(CDumpContext &dc) const
 {
     CChildFrame::Dump(dc);
 }
@@ -91,9 +91,29 @@ void CSvgChildFrame::SetScale(double dScale)
     m_dScale = dScale;
     m_svgImage->SetDPI(m_dScale * USER_DEFAULT_SCREEN_DPI);
     DeleteObject(m_hBitmap);
-    m_hBitmap = nullptr;
-    LoadSvgFile(m_strFilePath);
-    Invalidate();
+    m_hBitmap = m_svgImage->ToHBITMAP();
+    if (m_hBitmap)
+    {
+        BITMAP bm;
+        ::GetObject(m_hBitmap, sizeof(BITMAP), &bm);
+        int nWidth = bm.bmWidth;
+        int nHeight = bm.bmHeight;
+
+        int nClientWidth = 10 + nWidth + 10 + 10;
+        int nClientHeight = 10 + nHeight + 10;
+
+        CRect rectStatusBar;
+        m_wndStatusBar.GetWindowRect(&rectStatusBar);
+        int nStatusBarHeight = rectStatusBar.Height();
+
+        CRect rc(0, 0, nClientWidth, nClientHeight + nStatusBarHeight);
+        CalcWindowRect(&rc);
+
+        SetWindowPos(NULL, 0, 0, rc.Width(), rc.Height(),
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+        Invalidate();
+    }
 }
 
 void CSvgChildFrame::LoadFile(LPCTSTR lpszPath)
@@ -150,7 +170,7 @@ void CSvgChildFrame::LoadSvgFile(LPCTSTR lpszPath)
             CalcWindowRect(&rc);
 
             SetWindowPos(NULL, 0, 0, rc.Width(), rc.Height(),
-                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+                         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
             Invalidate();
         }
@@ -194,7 +214,7 @@ void CSvgChildFrame::OnPaint()
 
             // Draw original at (10,10)
             ::AlphaBlend(dc.m_hDC, 10, 10, nWidth, nHeight,
-                hdcMem, 0, 0, nWidth, nHeight, bf);
+                         hdcMem, 0, 0, nWidth, nHeight, bf);
         }
         // Cleanup
         ::SelectObject(hdcMem, hOldBitmap);
@@ -202,7 +222,7 @@ void CSvgChildFrame::OnPaint()
     }
 }
 
-BOOL CSvgChildFrame::PreCreateWindow(CREATESTRUCT& cs)
+BOOL CSvgChildFrame::PreCreateWindow(CREATESTRUCT &cs)
 {
     if (!CChildFrame::PreCreateWindow(cs))
         return FALSE;

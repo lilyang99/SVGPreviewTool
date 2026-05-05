@@ -17,9 +17,11 @@ CSVGImage::CSVGImage(CSVGImage&& other) noexcept
     : m_renderer(std::move(other.m_renderer))
     , m_attributeReader(std::move(other.m_attributeReader))
     , m_converter(std::move(other.m_converter))
+    , m_loaded(other.m_loaded)
     , m_currentDPI(other.m_currentDPI)
     , m_originalSize(other.m_originalSize)
 {
+    other.m_loaded = false;
     other.m_currentDPI = USER_DEFAULT_SCREEN_DPI;
     other.m_originalSize = {0, 0};
 }
@@ -32,8 +34,10 @@ CSVGImage& CSVGImage::operator=(CSVGImage&& other) noexcept
         m_renderer = std::move(other.m_renderer);
         m_attributeReader = std::move(other.m_attributeReader);
         m_converter = std::move(other.m_converter);
+        m_loaded = other.m_loaded;
         m_currentDPI = other.m_currentDPI;
         m_originalSize = other.m_originalSize;
+        other.m_loaded = false;
         other.m_currentDPI = USER_DEFAULT_SCREEN_DPI;
         other.m_originalSize = {0, 0};
     }
@@ -83,6 +87,25 @@ void CSVGImage::Cleanup()
     {
         m_renderer->Cleanup();
     }
+
+    m_loaded = false;
+}
+
+void CSVGImage::Reset()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    m_converter.reset();
+    m_attributeReader.reset();
+
+    if (m_renderer)
+    {
+        m_renderer->Cleanup();
+    }
+
+    m_loaded = false;
+    m_originalSize = {0, 0};
+    m_attributeReader = std::make_unique<CD2DAttributeReader>();
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +118,9 @@ HRESULT CSVGImage::LoadInternal(HRESULT errorOnInvalid, LoadFunc&& loadFunc)
 
     if (!m_renderer)
         return errorOnInvalid;
+
+    if (m_loaded)
+        return S_FALSE; // Already loaded — idempotent
 
     // Save old state for rollback on failure
     auto oldReader = std::move(m_attributeReader);
@@ -124,6 +150,7 @@ HRESULT CSVGImage::LoadInternal(HRESULT errorOnInvalid, LoadFunc&& loadFunc)
     }
 
     m_converter = std::make_unique<CSVGImageConverter>(m_renderer.get(), m_attributeReader.get());
+    m_loaded = true;
     return S_OK;
 }
 

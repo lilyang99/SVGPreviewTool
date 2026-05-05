@@ -1,14 +1,14 @@
 #include "pch.h"
 #include "D2DAttributeReader.h"
 
-HRESULT CD2DAttributeReader::Initialize(const Microsoft::WRL::ComPtr<ID2D1SvgDocument>& svgDocument)
+HRESULT CD2DAttributeReader::Initialize(const Microsoft::WRL::ComPtr<ID2D1SvgDocument> &svgDocument)
 {
     m_svgDocument = svgDocument;
     m_valid = (svgDocument != nullptr);
     return m_valid ? S_OK : E_FAIL;
 }
 
-HRESULT CD2DAttributeReader::GetViewBox(D2D1_SVG_VIEWBOX* viewBox) const
+HRESULT CD2DAttributeReader::GetViewBox(D2D1_SVG_VIEWBOX *viewBox) const
 {
     if (!viewBox || !m_valid)
         return E_FAIL;
@@ -19,13 +19,44 @@ HRESULT CD2DAttributeReader::GetViewBox(D2D1_SVG_VIEWBOX* viewBox) const
         return E_FAIL;
 
     HRESULT hr = root->GetAttributeValue(
-        L"viewBox",
+        SVG_ATTRIBUTE_VIEWBOX,
         D2D1_SVG_ATTRIBUTE_POD_TYPE_VIEWBOX,
         viewBox,
-        sizeof(*viewBox)
-    );
+        sizeof(*viewBox));
 
     return hr;
+}
+
+HRESULT CD2DAttributeReader::GetRootSize(D2D1_SVG_LENGTH *width, D2D1_SVG_LENGTH *height) const
+{
+    if (!width || !height || !m_valid)
+        return E_FAIL;
+
+    Microsoft::WRL::ComPtr<ID2D1SvgElement> root;
+    m_svgDocument->GetRoot(&root);
+    if (!root)
+        return E_FAIL;
+
+    D2D1_SVG_LENGTH svgWidth = {}, svgHeight = {};
+    HRESULT hr = root->GetAttributeValue(
+        SVG_ATTRIBUTE_WIDTH,
+        D2D1_SVG_ATTRIBUTE_POD_TYPE_LENGTH,
+        &svgWidth,
+        sizeof(svgWidth));
+    if (FAILED(hr))
+        return hr;
+
+    hr = root->GetAttributeValue(
+        SVG_ATTRIBUTE_HEIGHT,
+        D2D1_SVG_ATTRIBUTE_POD_TYPE_LENGTH,
+        &svgHeight,
+        sizeof(svgHeight));
+    if (FAILED(hr))
+        return hr;
+
+    *width = svgWidth;
+    *height = svgHeight;
+    return S_OK;
 }
 
 SIZE CD2DAttributeReader::GetOriginalSize() const
@@ -41,17 +72,11 @@ SIZE CD2DAttributeReader::GetOriginalSize() const
     }
 
     // Priority 2: width/height attributes from the root <svg> element
-    Microsoft::WRL::ComPtr<ID2D1SvgElement> root;
-    m_svgDocument->GetRoot(&root);
-    if (root)
+    D2D1_SVG_LENGTH svgWidth = {}, svgHeight = {};
+    if (SUCCEEDED(GetRootSize(&svgWidth, &svgHeight)) &&
+        svgWidth.value > 0 && svgHeight.value > 0)
     {
-        D2D1_SVG_LENGTH svgWidth = {}, svgHeight = {};
-        if (SUCCEEDED(root->GetAttributeValue(L"width", D2D1_SVG_ATTRIBUTE_POD_TYPE_LENGTH, &svgWidth, sizeof(svgWidth))) &&
-            SUCCEEDED(root->GetAttributeValue(L"height", D2D1_SVG_ATTRIBUTE_POD_TYPE_LENGTH, &svgHeight, sizeof(svgHeight))) &&
-            svgWidth.value > 0 && svgHeight.value > 0)
-        {
-            return SIZE{static_cast<INT>(svgWidth.value), static_cast<INT>(svgHeight.value)};
-        }
+        return SIZE{static_cast<INT>(svgWidth.value), static_cast<INT>(svgHeight.value)};
     }
 
     // Priority 3: fallback to viewport size

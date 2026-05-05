@@ -42,6 +42,9 @@ public:
     bool IsValid() const override;
     ISVGAttributeReader* GetAttributeReader() override;
 
+    /// @brief Reset loaded state so a different SVG can be loaded
+    void Reset();
+
 private:
     /// @name Components
     /// @{
@@ -49,6 +52,9 @@ private:
     std::unique_ptr<CD2DAttributeReader> m_attributeReader;
     std::unique_ptr<CSVGImageConverter> m_converter;
     /// @}
+
+    /// @brief Whether SVG content has been loaded
+    bool m_loaded = false;
 
     /// @brief Current DPI
     UINT m_currentDPI = USER_DEFAULT_SCREEN_DPI;
@@ -65,4 +71,3 @@ private:
 };
 
 #endif // SVGRENDER_IMAGE_CSVGIMAGE_H_
-

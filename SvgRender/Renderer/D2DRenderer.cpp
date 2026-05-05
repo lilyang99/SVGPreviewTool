@@ -13,8 +13,7 @@ bool CD2DRenderer::Initialize()
             D2D1_FACTORY_TYPE_SINGLE_THREADED,
             __uuidof(ID2D1Factory1),
             nullptr,
-            &m_factory
-        );
+            &m_factory);
         if (FAILED(hr))
             return false;
     }
@@ -26,8 +25,7 @@ bool CD2DRenderer::Initialize()
             CLSID_WICImagingFactory,
             nullptr,
             CLSCTX_INPROC_SERVER,
-            IID_PPV_ARGS(&m_wic)
-        );
+            IID_PPV_ARGS(&m_wic));
         if (FAILED(hr))
             return false;
     }
@@ -49,7 +47,7 @@ void CD2DRenderer::Cleanup()
     m_loaded = false;
 }
 
-HRESULT CD2DRenderer::LoadFromStream(IStream* stream)
+HRESULT CD2DRenderer::LoadFromStream(IStream *stream)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return LoadFromStreamInternal(stream);
@@ -67,8 +65,7 @@ HRESULT CD2DRenderer::LoadFromFile(LPCWSTR filePath)
         nullptr,
         OPEN_EXISTING,
         FILE_ATTRIBUTE_NORMAL,
-        nullptr
-    );
+        nullptr);
 
     if (hFile == INVALID_HANDLE_VALUE)
         return E_FAIL;
@@ -94,7 +91,7 @@ HRESULT CD2DRenderer::LoadFromFile(LPCWSTR filePath)
         return E_OUTOFMEMORY;
     }
 
-    BYTE* pGlobal = static_cast<BYTE*>(::GlobalLock(hGlobal));
+    BYTE *pGlobal = static_cast<BYTE *>(::GlobalLock(hGlobal));
     if (!pGlobal)
     {
         ::CloseHandle(hFile);
@@ -104,7 +101,7 @@ HRESULT CD2DRenderer::LoadFromFile(LPCWSTR filePath)
 
     DWORD bytesRead;
     BOOL success = ::ReadFile(hFile, pGlobal, fileSize.LowPart, &bytesRead, nullptr) &&
-        bytesRead == fileSize.LowPart;
+                   bytesRead == fileSize.LowPart;
 
     ::GlobalUnlock(hGlobal);
     ::CloseHandle(hFile);
@@ -115,7 +112,7 @@ HRESULT CD2DRenderer::LoadFromFile(LPCWSTR filePath)
         return E_FAIL;
     }
 
-    IStream* pStream = nullptr;
+    IStream *pStream = nullptr;
     HRESULT hr = CreateStreamOnHGlobal(hGlobal, TRUE, &pStream);
     if (SUCCEEDED(hr) && pStream)
     {
@@ -162,7 +159,7 @@ HRESULT CD2DRenderer::LoadFromResource(UINT resourceID, LPCWSTR type)
     CopyMemory(pBuffer, pResourceData, imageSize);
     ::GlobalUnlock(hBuffer);
 
-    IStream* pStream = nullptr;
+    IStream *pStream = nullptr;
     // fDeleteOnRelease = TRUE: pStream->Release() will call GlobalFree(hBuffer)
     HRESULT hr = CreateStreamOnHGlobal(hBuffer, TRUE, &pStream);
     if (FAILED(hr) || !pStream)
@@ -172,12 +169,12 @@ HRESULT CD2DRenderer::LoadFromResource(UINT resourceID, LPCWSTR type)
     }
 
     hr = LoadFromStreamInternal(pStream);
-    pStream->Release();  // Also frees hBuffer (fDeleteOnRelease = TRUE)
+    pStream->Release(); // Also frees hBuffer (fDeleteOnRelease = TRUE)
     return hr;
 }
 
 HRESULT CD2DRenderer::RenderToWICBitmap(
-    IWICBitmap* destination,
+    IWICBitmap *destination,
     FLOAT dpiX,
     FLOAT dpiY)
 {
@@ -193,8 +190,7 @@ HRESULT CD2DRenderer::RenderToWICBitmap(
 
     D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
         D2D1_RENDER_TARGET_TYPE_DEFAULT,
-        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
-    );
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
 
     HRESULT hr = m_factory->CreateWicBitmapRenderTarget(destination, &props, &m_renderTarget);
     if (FAILED(hr))
@@ -209,7 +205,9 @@ HRESULT CD2DRenderer::RenderToWICBitmap(
 
     m_context->BeginDraw();
     m_context->Clear();
-    m_context->SetDpi(m_currentDpiX, m_currentDpiY);
+    D2D1_MATRIX_3X2_F transform = D2D1::Matrix3x2F::Scale(m_currentDpiX / USER_DEFAULT_SCREEN_DPI,
+                                  m_currentDpiX / USER_DEFAULT_SCREEN_DPI);
+    m_context->SetTransform(transform);
     m_context->DrawSvgDocument(m_svg.Get());
 
     hr = m_context->EndDraw();
@@ -232,13 +230,13 @@ bool CD2DRenderer::IsValid() const
     return m_initialized && m_loaded && m_svg != nullptr;
 }
 
-ID2D1SvgDocument* CD2DRenderer::GetSvgDocument() const
+ID2D1SvgDocument *CD2DRenderer::GetSvgDocument() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_svg.Get();
 }
 
-HRESULT CD2DRenderer::GetWICBitmap(IWICBitmap** bitmap)
+HRESULT CD2DRenderer::GetWICBitmap(IWICBitmap **bitmap)
 {
     if (!bitmap || !m_wicBitmap)
         return E_POINTER;
@@ -248,7 +246,7 @@ HRESULT CD2DRenderer::GetWICBitmap(IWICBitmap** bitmap)
     return S_OK;
 }
 
-HRESULT CD2DRenderer::LoadFromStreamInternal(IStream* stream)
+HRESULT CD2DRenderer::LoadFromStreamInternal(IStream *stream)
 {
     if (!stream)
         return E_POINTER;
@@ -262,8 +260,7 @@ HRESULT CD2DRenderer::LoadFromStreamInternal(IStream* stream)
 
     D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
         D2D1_RENDER_TARGET_TYPE_DEFAULT,
-        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
-    );
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
 
     Microsoft::WRL::ComPtr<IWICBitmap> newWicBitmap;
     HRESULT hr = m_wic->CreateBitmap(
@@ -271,8 +268,7 @@ HRESULT CD2DRenderer::LoadFromStreamInternal(IStream* stream)
         static_cast<UINT>(tempViewportSize.height),
         GUID_WICPixelFormat32bppPBGRA,
         WICBitmapCacheOnLoad,
-        &newWicBitmap
-    );
+        &newWicBitmap);
     if (FAILED(hr))
         return hr;
 
@@ -308,7 +304,9 @@ HRESULT CD2DRenderer::LoadFromStreamInternal(IStream* stream)
         }
     } // attributeReader destroyed — releases its SVG ref while context is alive
 
-    // If actual size differs from temp, recreate with correct viewport
+    // If actual size differs from temp, recreate with correct viewport.
+    // The first CreateSvgDocument call consumed the stream; rewind it so the
+    // second call can read the SVG XML from the beginning.
     if (actualViewportSize.width != tempViewportSize.width ||
         actualViewportSize.height != tempViewportSize.height)
     {
@@ -328,8 +326,7 @@ HRESULT CD2DRenderer::LoadFromStreamInternal(IStream* stream)
             static_cast<UINT>(actualViewportSize.height),
             GUID_WICPixelFormat32bppPBGRA,
             WICBitmapCacheOnLoad,
-            &newWicBitmap
-        );
+            &newWicBitmap);
         if (FAILED(hr))
             return hr;
 
